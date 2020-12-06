@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<style>
+    div {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        float: left;
+        margin-top: 20px;
+        margin-left: 20px;
+    }
+    .gray {
+        background-color: gray;
+    }
+    .red {
+        background-color: red;
+    }
+
+    .yellow {
+        background-color: yellow;
+    }
+
+    .green {
+        background-color: green;
+    }
+</style>
+
+<body>
+    <div class="gray" id="red"></div>
+    <div class="gray" id="yellow"></div>
+    <div class="gray" id="green"></div>
+    <script>
+        function light(color, delay) {
+            document.getElementById(color).classList.add(color)
+            return new Promise((resolve, reject) => {
+                setTimeout(() => {
+                    document.getElementById(color).classList.remove(color)
+                    resolve(color)
+                }, delay)
+            })
+        }
+        function clear() {
+            let lights = document.getElementsByTagName('div')
+            for(let i = 0;i <lights.length; i++) {
+                lights[i].classList.add('gray')
+            }
+        }
+        async function showLight() {
+            while (true) {
+                await light("red", 1000)
+                await light("yellow", 2000)
+                await light("green", 3000)
+            }
+        }
+        showLight()
+    </script>
+</body>
+
+</html>
