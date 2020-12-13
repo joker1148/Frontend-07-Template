@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <style>
+        #container {
+            width: 1000px;
+            display: flex;
+            flex-wrap: wrap;
+            border: 1px solid black;
+        }
+
+        #container .block {
+            height: 10px;
+            width: 10px;
+            border: 1px solid black;
+            line-height: 5px;
+            text-align: center;
+            box-sizing: border-box;
+            cursor: pointer;
+        }
+    </style>
+    <div id="container"></div>
+    <button onclick="localStorage['map'] = JSON.stringify(map)">save</button>
+    <script>
+        const MAP_LENGTH = 100;
+        let MOUSE_DOWN = false;
+        let CLEAR = false;
+        let map = [];
+        let queue = null;
+        let container;
+        //初始化地图
+        function init() {
+            container = document.getElementById('container');
+            // 从内存中取map的数据（一位数组）
+            let mapString = localStorage['map'];
+            // 若无数据则创建新数组，并赋0
+            map = mapString ? JSON.parse(mapString) : Array(MAP_LENGTH * MAP_LENGTH).fill(0);
+            for (let i = 0; i < MAP_LENGTH; i++) {
+                for (let j = i * MAP_LENGTH; j < (i + 1) * MAP_LENGTH; j++) {
+                    let block = document.createElement('div');
+                    block.className = 'block';
+                    if (map[j] == 0) {
+                        block.style.backgroundColor = 'white';
+                    } else {
+                        block.style.backgroundColor = 'gray';
+                    }
+                    container.appendChild(block);
+                    // 添加监听事件
+                    block.addEventListener('mousemove', function () {
+                        // 没按鼠标就return
+                        if (!MOUSE_DOWN) {
+                            return;
+                        }
+                        if (CLEAR) {
+                            // 鼠标没移过赋值0
+                            block.style.backgroundColor = 'white';
+                            map[j] = 0;
+                        } else {
+                            // 鼠标移过赋值1
+                            block.style.backgroundColor = 'gray';
+                            map[j] = 1;
+                        }
+                    });
+                }
+            }
+            document.addEventListener('mousedown', function (e) {
+                // 鼠标按下
+                MOUSE_DOWN = true;
+                CLEAR = e.which === 3;
+            });
+            document.addEventListener('mouseup', function () {
+                // 鼠标抬起
+                MOUSE_DOWN = false;
+            });
+            document.addEventListener('contextmenu', function (e) {
+                e.preventDefault();
+            });
+        }
+
+        async function findPath(map, start, end) {
+            // 寻找路径
+            async function insert(map, point, before) {
+                // 取出坐标
+                let [x, y] = point;
+                let [b_x, b_y] = before;
+                // 到墙了
+                if (x >= MAP_LENGTH || x < 0) {
+                    return;
+                }
+                if (y >= MAP_LENGTH || y < 0) {
+                    return;
+                }
+                let b_g = map[b_x * MAP_LENGTH + b_y].g;
+                if (!map[x * MAP_LENGTH + y]) {
+                    //A*算法  https://blog.csdn.net/weixin_44489823/article/details/89382502
+                    map[x * MAP_LENGTH + y] = {
+                        parent: before,
+                        g: b_g + 1,
+                        h: Math.abs(point[0] - end[0])  + Math.abs(point[1] - end[1])
+                    }
+                    queue.give(point);
+                    container.children[x * MAP_LENGTH + y].style.backgroundColor = 'green';
+                    await sleep(10);
+                } else if(map[x * MAP_LENGTH + y].parent){
+                    //A*算法 查找是否有更优质的前置点
+                    let g = map[x * MAP_LENGTH + y].g;
+                    if(b_g + 1 < g) {
+                        map[x * MAP_LENGTH + y].parent = before;
+                        map[x * MAP_LENGTH + y].g = b_g + 1;
+                        // point的值变小，在二插堆要做上浮处理
+                        queue.up(point);
+                    }
+                }
+            };
+            queue = new BinaryHeap([start], (a, b) => {
+                let pointA = map[a[0] * MAP_LENGTH + a[1]];
+                let pointB = map[b[0] * MAP_LENGTH + b[1]];
+                return pointA.h + pointA.g - pointB.h - pointB.g;
+            })
+            map[start[0] * MAP_LENGTH + start[1]] = {
+                g: 0
+            };
+            container.children[start[0] * MAP_LENGTH + start[1]].style.backgroundColor = 'green';
+            while (queue.length()) {
+                let [x, y] = queue.take();
+                if (x == end[0] && y == end[1]) {
+                    console.log('find end! ' + [x, y]);
+                    drawPath(start, end);
+                    return true;
+                }
+                // A*算法
+                await insert(map, [x + 1, y], [x, y]);
+                await insert(map, [x - 1, y], [x, y]);
+                await insert(map, [x, y + 1], [x, y]);
+                await insert(map, [x, y - 1], [x, y]);
+                await insert(map, [x + 1, y + 1], [x, y]);
+                await insert(map, [x + 1, y - 1], [x, y]);
+                await insert(map, [x - 1, y + 1], [x, y]);
+                await insert(map, [x - 1, y - 1], [x, y]);
+            }
+            return false;
+        }
+
+
+        // 添加延迟sleep
+        function sleep(time) {
+            return new Promise(function (resolve) {
+                setTimeout(resolve, time);
+            });
+        }
+
+        // 画路径
+        async function drawPath(start, end) {
+            let [x, y] = end;
+            while (!(x == start[0] && y == start[1])) {
+                container.children[x * MAP_LENGTH + y].style.backgroundColor = 'purple';
+                [x, y] = map[x * MAP_LENGTH + y].parent;
+                await sleep(2);
+            }
+            container.children[x * MAP_LENGTH + y].style.backgroundColor = 'purple';
+        }
+
+        class BinaryHeap {
+            constructor(data, compare) {
+                this.data = data.slice();
+                this.compare = compare || ((a, b) => {
+                    return a - b;
+                });
+            };
+            swap(a, b) {
+                // 交换数组两个位置的值
+                let tmp = this.data[a];
+                this.data[a] = this.data[b];
+                this.data[b] = tmp;
+            }
+            take() {
+                if (!this.data.length) {
+                    return;
+                }
+                const min = this.data[0];
+                if (this.data.length === 1) {
+                    // 只剩一个，直接Pop
+                    this.data.pop();
+                } else {
+                    // 二叉堆
+                    // 删除根节点，最后一个节点填充到根节点
+                    this.data[0] = this.data.pop();
+                    let index = 0;
+                    while (true) {
+                        // 找到左右节点
+                        let sub_l_index = index * 2 + 1;
+                        let sub_r_index = index * 2 + 2;
+                        if (sub_l_index > this.data.length - 1) {
+                            // 没有左右节点，已经是叶子节点，终止
+                            break;
+                        }
+                        let left_diff = this.compare(this.data[index], this.data[sub_l_index]);
+                        if (sub_r_index <= this.data.length - 1) {
+                            // 同时有左右节点
+                            let right_diff = this.compare(this.data[index], this.data[sub_r_index]);
+                            if (left_diff < 0 && right_diff < 0) {
+                                // 比左右节点都小，停止下沉
+                                break;
+                            } else if (left_diff > right_diff) {
+                                // 左节点相对更小，和左节点交换
+                                this.swap(index, sub_l_index);
+                                index = sub_l_index;
+                            } else if (left_diff < right_diff) {
+                                // 右节点相对更小，和右节点交换
+                                this.swap(index, sub_r_index);
+                                index = sub_r_index;
+                            } else {
+                                // 左右节点一样大，交换左节点
+                                this.swap(index, sub_l_index);
+                                index = sub_l_index;
+                            }
+                        } else if (left_diff > 0) {
+                            // 只有左节点，同时比左节点更大，和左节点交换
+                            this.swap(index, sub_l_index);
+                            index = sub_l_index;
+                        } else {
+                            // 只有左节点，同时比左节点更小，停止下沉
+                            break;
+                        }
+                    }
+                }
+                return min;
+            }
+            getParentIndex(index) {
+                // 找到父节点
+                return index % 2 === 0 ? (index - 2) / 2 : (index - 1) / 2;
+            }
+            give(v) {
+                this.data.push(v);
+                let index = this.data.length - 1;
+                let parent_index = this.getParentIndex(index);
+                while (parent_index >= 0 && this.compare(this.data[index], this.data[parent_index]) < 0) {
+                    // 如果比父节点小，则上浮
+                    this.swap(parent_index, index);
+                    index = parent_index;
+                    parent_index = this.getParentIndex(index);
+                }
+
+            }
+            up(v) {
+                // 节点的值减少，做上浮处理
+                let index = -1;
+                for(let i = 0;i < this.data.length; i++) {
+                    if(this.data[i][0] == v[0] && this.data[i][1] == v[1]) {
+                        index = i;
+                        break;
+                    }
+                }
+                if(index < 0) {
+                    return;
+                }
+                console.log('up',v,index);
+                let parent_index = this.getParentIndex(index);
+                while (parent_index >= 0 && this.compare(this.data[index], this.data[parent_index]) < 0) {
+                    // 如果比父节点小，则上浮
+                    this.swap(parent_index, index);
+                    index = parent_index;
+                    parent_index = this.getParentIndex(index);
+                }
+            }
+            length() {
+                return this.data.length;
+            }
+        }
+        init();
+    </script>
+</body>
+
+</html>
